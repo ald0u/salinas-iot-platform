@@ -1,0 +1,60 @@
+# ============================================================
+# Monorepo – salinas-iot-platform
+# ============================================================
+
+# ---------- Node / npm ----------
+node_modules/
+npm-debug.log*
+yarn-error.log*
+package-lock.json
+
+# ---------- TypeScript build outputs ----------
+dist/
+build/
+out-tsc/
+*.js.map
+*.d.ts.map
+
+# ---------- Angular ----------
+frontend/.angular/
+frontend/dist/
+frontend/tmp/
+frontend/coverage/
+
+# ---------- AWS CDK ----------
+infrastructure/cdk.out/
+infrastructure/*.js
+infrastructure/*.d.ts
+
+# ---------- Environment / secrets ----------
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.cert
+
+# ---------- Logs ----------
+*.log
+logs/
+
+# ---------- Testing ----------
+coverage/
+.nyc_output/
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- IDEs ----------
+.vscode/
+.idea/
+*.sublime-workspace
+*.suo
+*.user
+
+# ---------- Misc ----------
+.cache/
+.temp/
+tmp/
