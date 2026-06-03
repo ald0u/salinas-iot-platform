@@ -1,0 +1,83 @@
+services:
+
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: salinas-iot-dynamodb
+    ports:
+      - "8000:8000"
+    volumes:
+      - dynamodb-data:/home/dynamodblocal
+    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath /home/dynamodblocal"
+    networks:
+      - iot-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: salinas-iot-backend
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - WS_PORT=3001
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - DYNAMODB_REGION=us-east-1
+      - DYNAMODB_TABLE=IoTData
+      - JWT_ACCESS_SECRET=dev-access-secret-change-in-prod
+      - JWT_REFRESH_SECRET=dev-refresh-secret-change-in-prod
+      - JWT_ACCESS_EXPIRY=15m
+      - JWT_REFRESH_EXPIRY=7d
+      - CORS_ORIGIN=http://localhost:4200
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    depends_on:
+      - dynamodb-local
+    networks:
+      - iot-network
+    command: npm run dev
+
+  iot-gateway:
+    build:
+      context: ./iot-gateway
+      dockerfile: Dockerfile.dev
+    container_name: salinas-iot-gateway
+    environment:
+      - NODE_ENV=development
+      - BACKEND_URL=http://backend:3000
+      - MQTT_MODE=local
+      - PUBLISH_INTERVAL_MS=5000
+      - ACTIVE_DEVICES=10
+      - ANOMALY_PROBABILITY=0.05
+    volumes:
+      - ./iot-gateway:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - iot-network
+    command: npm run dev
+
+  dynamodb-admin:
+    image: aaronshaf/dynamodb-admin:latest
+    container_name: salinas-iot-dynamodb-admin
+    ports:
+      - "8001:8001"
+    environment:
+      - DYNAMO_ENDPOINT=http://dynamodb-local:8000
+      - AWS_REGION=us-east-1
+    networks:
+      - iot-network
+    depends_on:
+      - dynamodb-local
+
+networks:
+  iot-network:
+    driver: bridge
+
+volumes:
+  dynamodb-data:
+    driver: local
