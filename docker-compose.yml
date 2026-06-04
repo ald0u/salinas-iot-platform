@@ -11,6 +11,16 @@ services:
     networks:
       - iot-network
 
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: salinas-iot-mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    networks:
+      - iot-network
+
   backend:
     build:
       context: ./backend
@@ -32,11 +42,15 @@ services:
       - JWT_REFRESH_EXPIRY=7d
       - CORS_ORIGIN=http://localhost:4200
       - SYSTEM_INGEST_KEY=local-dev-ingest-key
+      - MQTT_ENABLED=true
+      - MQTT_BROKER_URL=mqtt://mosquitto:1883
+      - MQTT_TOPIC_PREFIX=dt/devices
     volumes:
       - ./backend:/app
       - /app/node_modules
     depends_on:
       - dynamodb-local
+      - mosquitto
     networks:
       - iot-network
     command: sh -c "npm run build && until npm run db:init; do echo 'esperando a DynamoDB...'; sleep 2; done && (npm run db:seed || true) && npm run start"
@@ -49,7 +63,8 @@ services:
     environment:
       - NODE_ENV=development
       - BACKEND_URL=http://backend:3000
-      - MQTT_MODE=local
+      - MQTT_MODE=aws
+      - IOT_ENDPOINT=mqtt://mosquitto:1883
       - PUBLISH_INTERVAL_MS=5000
       - ACTIVE_DEVICES=10
       - ANOMALY_PROBABILITY=0.05
@@ -60,6 +75,7 @@ services:
       - /app/node_modules
     depends_on:
       - backend
+      - mosquitto
     networks:
       - iot-network
     command: npm run dev
