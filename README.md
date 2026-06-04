@@ -1,357 +1,244 @@
-# Salinas IoT Platform — Monitoreo de Centro de Datos en Tiempo Real
+# Salinas IoT Platform
 
-Plataforma de monitoreo en tiempo real para dispositivos IoT desplegados en un centro de datos
-(sensores de temperatura, humedad, consumo eléctrico, estado de UPS y sistemas de enfriamiento).
+Sistema de monitoreo en tiempo real para los dispositivos IoT de un centro de datos: sensores de
+temperatura, humedad, consumo eléctrico, estado de UPS y equipos de enfriamiento.
 
-Permite monitorear el estado de 500+ dispositivos, generar alertas cuando los valores exceden
-umbrales configurables, visualizar históricos y tendencias, gestionar dispositivos (CRUD completo)
-y autenticación segura con roles (Admin, Operator, Viewer).
+La plataforma permite ver el estado de los dispositivos al momento, generar alertas cuando un valor
+se sale de su umbral, consultar históricos y tendencias, administrar los dispositivos (alta, baja y
+edición) y manejar usuarios con tres roles: admin, operator y viewer.
 
-> **Prueba Técnica — Grupo Salinas DC**
+Desarrollado como prueba técnica para Grupo Salinas DC.
 
----
 
-## Tabla de contenido
+## Cómo está construido
 
-- [Arquitectura](#-arquitectura)
-- [Stack tecnológico](#-stack-tecnológico)
-- [Decisión de diseño: "Cloud-ready, ejecución local"](#-decisión-de-diseño-cloud-ready-ejecución-local)
-- [Requisitos previos](#-requisitos-previos)
-- [Despliegue local (Docker)](#-despliegue-local-docker-recomendado)
-- [Despliegue manual (sin Docker)](#-despliegue-manual-sin-docker)
-- [Variables de entorno](#-variables-de-entorno)
-- [Usuarios por defecto](#-usuarios-por-defecto)
-- [Endpoints de la API](#-endpoints-de-la-api)
-- [Documentación Swagger / Postman](#-documentación-swagger--postman)
-- [WebSocket (tiempo real)](#-websocket-tiempo-real)
-- [IoT Gateway / Simulador](#-iot-gateway--simulador)
-- [Estructura del proyecto](#-estructura-del-proyecto)
-- [Despliegue en AWS (diseño)](#-despliegue-en-aws-diseño)
-- [Video explicativo](#-video-explicativo)
-
----
-
-## 🏗 Arquitectura
+El camino que siguen los datos es este:
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│  IoT Gateway (demonio Node.js en Docker)                                      │
-│   Simuladores: Temp · Humedad · Power · UPS · Cooling                         │
-│                          │                                                     │
-│                          ▼                                                     │
-│                   MQTT Publisher (dual-mode)                                   │
-│       MQTT_MODE=local ─── HTTP POST /api/v1/readings/batch ──┐ (demo actual)   │
-│       MQTT_MODE=aws   ─── MQTT/TLS → AWS IoT Core ───────────┘ (diseño cloud)  │
-└──────────────────────────────────────────────────────────────┼───────────────┘
-                                                                ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│  Backend Node.js / Express  (en AWS: Lambda o EC2)                            │
-│   1. Persiste la lectura en DynamoDB                                          │
-│   2. Evalúa umbrales del dispositivo → genera alertas                         │
-│   3. Emite eventos por WebSocket a los clientes suscritos                      │
-│                                                                                │
-│   REST API /api/v1 (JWT + RBAC)      WebSocket (Socket.io)                     │
-└───────────────┬───────────────────────────────────┬───────────────────────────┘
-                ▼                                     ▼
-        ┌──────────────┐                     ┌─────────────────────┐
-        │  DynamoDB    │                     │  Frontend Angular   │
-        │  single-table│                     │  (S3 + CloudFront)  │
-        │  + GSI1 + TTL│                     └─────────────────────┘
-        └──────────────┘
+IoT Gateway (Node.js)
+   simula los sensores y publica sus lecturas
+        │  MQTT  →  topic dt/devices/{deviceId}/telemetry
+        ▼
+Mosquitto  (broker MQTT — equivale a AWS IoT Core)
+        │
+        ▼
+Backend (Express + Socket.io)
+   1. guarda la lectura en DynamoDB
+   2. compara contra los umbrales del dispositivo y, si hace falta, crea una alerta
+   3. avisa a los clientes conectados por WebSocket
+        │
+        ├──────────────► DynamoDB (single-table)
+        │
+        └──────────────► Frontend Angular (en desarrollo)
 ```
 
-> El diagrama completo y justificado está en [`docs/architecture/`](docs/architecture/).
+En resumen, cada pieza hace lo siguiente:
 
----
+- **IoT Gateway**: un proceso de Node.js que corre en segundo plano, simula los dispositivos y
+  publica sus lecturas por MQTT cada 5–10 segundos.
+- **Mosquitto**: el broker MQTT que recibe la telemetría. En la nube este papel lo haría AWS IoT Core.
+- **Backend**: recibe cada lectura, la persiste, evalúa los umbrales, genera alertas y emite eventos
+  en tiempo real. Expone además la API REST y la autenticación.
+- **DynamoDB**: la base de datos. En local se usa DynamoDB Local.
+- **Frontend**: la aplicación de Angular que consume la API y el WebSocket (todavía en construcción).
 
-## 🧰 Stack tecnológico
 
-| Capa            | Tecnología |
-|-----------------|------------|
-| Backend         | Node.js + Express 5 + TypeScript |
-| Base de datos   | DynamoDB (single-table design) — local con **DynamoDB Local** |
-| Tiempo real     | Socket.io (WebSocket) |
-| Autenticación   | JWT (access 15 min + refresh 7 días con rotación) + bcrypt |
-| Validación      | Joi |
-| Seguridad       | Helmet, CORS, sanitización de inputs, rate limiting |
-| Logging         | Winston (estructurado JSON) |
-| Caché de KPIs   | node-cache (TTL 10 s) |
-| Documentación   | Swagger / OpenAPI 3 |
-| IoT Gateway     | Node.js (demonio), publisher dual-mode (HTTP / MQTT) |
-| Frontend        | Angular + TypeScript *(en construcción)* |
-| Infraestructura | Docker + docker-compose · AWS CDK *(diseño)* |
+## Una nota sobre AWS
 
----
+La solución está pensada para desplegarse en AWS (IoT Core, DynamoDB, Lambda, API Gateway y
+S3 + CloudFront). Como no quise depender de una cuenta de AWS con costos para desarrollarla y
+demostrarla, la dejé corriendo entera en local con piezas equivalentes: Mosquitto en lugar de
+IoT Core, DynamoDB Local en lugar de DynamoDB, y el backend de Node haciendo el trabajo que en AWS
+harían una Lambda y el API Gateway.
 
-## 💡 Decisión de diseño: "Cloud-ready, ejecución local"
+Lo importante es que no está amarrada a esos equivalentes: el gateway publica por MQTT a un broker
+local o a AWS IoT Core (con `mqtts://` y certificados X.509) cambiando solo variables de entorno, sin
+tocar el código.
 
-La solución está **diseñada para AWS** (IoT Core, DynamoDB, Lambda/EC2, API Gateway, S3 + CloudFront),
-pero para desarrollo y demostración **sin incurrir en costos de nube** todo corre en `docker-compose`
-con equivalentes locales. El código está preparado para conmutar a AWS real **solo cambiando variables
-de entorno**.
+Para los datos elegí **single-table design** en DynamoDB: una sola tabla con un índice secundario
+(GSI1) y TTL. De esa forma escala sin administrar servidores y las lecturas viejas se eliminan solas
+a los 30 días, sin tener que correr tareas de limpieza.
 
-| Componente AWS (diseño)   | Equivalente local (ejecución actual)                       |
-|---------------------------|------------------------------------------------------------|
-| AWS IoT Core (MQTT/TLS)   | **Mosquitto** (broker MQTT en contenedor) — `MQTT_MODE=aws`, `IOT_ENDPOINT=mqtt://mosquitto:1883` |
-| IoT Rule                  | Suscriptor MQTT del backend (`mqtt.service.ts`)            |
-| DynamoDB                  | DynamoDB Local (contenedor)                                 |
-| Lambda / EC2 receptor     | Backend Node.js en contenedor                              |
-| API Gateway (REST + WS)   | Express + Socket.io                                        |
-| S3 + CloudFront           | Frontend Angular servido localmente                        |
 
-El payload de telemetría y la lógica de ingesta son **idénticos** sin importar el transporte:
-el gateway publica por MQTT a Mosquitto (igual que lo haría a AWS IoT Core con `mqtts://` + certificados
-X.509), y el backend se suscribe al topic `dt/devices/{deviceId}/telemetry`. También existe un modo
-`MQTT_MODE=local` que publica por HTTP (`POST /readings/batch`) como fallback sin broker.
+## Requisitos
 
----
+- Docker y Docker Compose.
+- Node.js 18 o superior (solo si quieres correrlo sin Docker).
 
-## ✅ Requisitos previos
 
-- [Docker](https://www.docker.com/) y Docker Compose
-- (Opcional, para despliegue manual) Node.js >= 18
+## Cómo levantarlo
 
----
-
-## 🚀 Despliegue local (Docker, recomendado)
+Con Docker es de un solo comando:
 
 ```bash
-# 1. Clonar el repositorio
 git clone <url-del-repo>
 cd salinas-iot-platform
-
-# 2. Levantar todos los servicios (DynamoDB Local, backend, gateway, admin)
-docker-compose up --build
+docker compose up --build
 ```
 
-Esto levanta:
+Eso levanta la base de datos, el broker, el backend y el gateway. El backend además crea la tabla y
+el usuario administrador automáticamente al arrancar, así que no hay que correr pasos manuales.
 
-| Servicio        | URL                          | Descripción                       |
-|-----------------|------------------------------|-----------------------------------|
-| Backend REST    | http://localhost:3000        | API REST `/api/v1`                |
-| Backend WS      | ws://localhost:3000          | WebSocket (Socket.io, comparte el servidor HTTP) |
-| Broker MQTT     | mqtt://localhost:1883        | Mosquitto (equivalente a AWS IoT Core) |
-| Swagger UI      | http://localhost:3000/docs   | Documentación interactiva         |
-| Health check    | http://localhost:3000/health | Estado del servicio               |
-| DynamoDB Local  | http://localhost:8000        | Base de datos                     |
-| DynamoDB Admin  | http://localhost:8001        | Visor de tablas/datos             |
+Cuando termine de subir, esto es lo que queda disponible:
 
-**Inicializar la base de datos** (la primera vez, en otra terminal):
+| Servicio        | Dirección                      |
+|-----------------|--------------------------------|
+| API REST        | http://localhost:3000/api/v1   |
+| WebSocket       | ws://localhost:3000            |
+| Swagger         | http://localhost:3000/docs     |
+| Broker MQTT     | mqtt://localhost:1883          |
+| DynamoDB Local  | http://localhost:8000          |
+| DynamoDB Admin  | http://localhost:8001          |
 
-```bash
-# Crear la tabla single-table con índices y TTL
-docker-compose exec backend npm run db:init
+> El WebSocket usa Socket.io y comparte el mismo servidor del backend (puerto 3000).
 
-# Crear el usuario administrador inicial
-docker-compose exec backend npm run db:seed
-```
+### Sin Docker
 
-Una vez sembrado, el **IoT Gateway** empieza a generar lecturas automáticamente y el backend las procesa,
-evalúa umbrales, genera alertas y las emite por WebSocket.
-
----
-
-## 🛠 Despliegue manual (sin Docker)
-
-Requiere una instancia de DynamoDB Local corriendo en `http://localhost:8000`.
+Necesitas DynamoDB Local corriendo en `http://localhost:8000` y un broker MQTT en `localhost:1883`.
 
 ```bash
-# Backend
 cd backend
 npm install
 npm run build
-npm run db:init     # crea la tabla
-npm run db:seed     # crea el admin
-npm run start       # o: npm run dev (hot-reload)
+npm run db:init    # crea la tabla
+npm run db:seed    # crea el usuario admin
+npm run start
 
-# IoT Gateway (en otra terminal)
+# en otra terminal
 cd iot-gateway
 npm install
 npm run dev
 ```
 
----
 
-## 🔐 Variables de entorno
+## Usuario inicial
 
-### Backend
+Después de sembrar la base de datos queda creado un administrador:
 
-| Variable               | Descripción                                  | Default                    |
-|------------------------|----------------------------------------------|----------------------------|
-| `PORT`                 | Puerto REST                                  | `3000`                     |
-| `WS_PORT`              | Puerto WebSocket                             | `3001`                     |
-| `DYNAMODB_ENDPOINT`    | Endpoint de DynamoDB                         | `http://localhost:8000`    |
-| `DYNAMODB_REGION`      | Región AWS                                   | `us-east-1`                |
-| `DYNAMODB_TABLE`       | Nombre de la tabla single-table              | `IoTData`                  |
-| `JWT_ACCESS_SECRET`    | Secreto del access token                     | —                          |
-| `JWT_REFRESH_SECRET`   | Secreto del refresh token                    | —                          |
-| `JWT_ACCESS_EXPIRY`    | Expiración del access token                  | `15m`                      |
-| `JWT_REFRESH_EXPIRY`   | Expiración del refresh token                 | `7d`                       |
-| `CORS_ORIGIN`          | Origen permitido (CORS)                      | `http://localhost:4200`    |
-| `SYSTEM_INGEST_KEY`    | Llave para ingesta de lecturas del gateway   | `local-dev-ingest-key`     |
-| `KPI_CACHE_TTL_SECONDS`| TTL de la caché de KPIs                       | `10`                       |
-| `MQTT_ENABLED`         | Activa el suscriptor MQTT (IoT Rule receptor)| `false`                    |
-| `MQTT_BROKER_URL`      | URL del broker MQTT (Mosquitto / IoT Core)   | `mqtt://localhost:1883`    |
-| `MQTT_TOPIC_PREFIX`    | Prefijo del topic a suscribir                | `dt/devices`               |
+- **Email:** `admin@salinas.local`
+- **Password:** `Admin1234!`
 
-### IoT Gateway
+Con ese usuario puedes dar de alta a otros (operator o viewer) desde `POST /api/v1/auth/register`.
 
-| Variable               | Descripción                                  | Default          |
-|------------------------|----------------------------------------------|------------------|
-| `MQTT_MODE`            | `local` (HTTP) o `aws` (MQTT a IoT Core)     | `local`          |
-| `BACKEND_URL`          | URL del backend (modo local)                 | `http://backend:3000` |
-| `PUBLISH_INTERVAL_MS`  | Intervalo entre publicaciones                | `5000`           |
-| `ACTIVE_DEVICES`       | Cantidad de dispositivos a simular           | `10`             |
-| `ANOMALY_PROBABILITY`  | Probabilidad de lectura fuera de umbral      | `0.05`           |
-| `MQTT_TOPIC_PREFIX`    | Prefijo del topic MQTT                       | `dt/devices`     |
-| `SYSTEM_INGEST_KEY`    | Llave de ingesta (debe coincidir con backend)| `local-dev-ingest-key` |
-| `IOT_ENDPOINT`         | Endpoint de AWS IoT Core (modo aws)          | —                |
-| `CERT_PATH`            | Ruta a certificados X.509 (modo aws)         | `./certs/`       |
 
----
+## La API
 
-## 👤 Usuarios por defecto
+Base: `http://localhost:3000/api/v1`. Documentación interactiva en `/docs` (Swagger) y colección
+lista para importar en [docs/postman](docs/postman/salinas-iot-platform.postman_collection.json).
 
-Tras ejecutar `npm run db:seed`:
+**Autenticación**
 
-| Email                 | Password     | Rol   |
-|-----------------------|--------------|-------|
-| `admin@salinas.local` | `Admin1234!` | admin |
+| Método | Ruta             | Quién                |
+|--------|------------------|----------------------|
+| POST   | `/auth/register` | admin                |
+| POST   | `/auth/login`    | público              |
+| POST   | `/auth/refresh`  | autenticado          |
+| POST   | `/auth/logout`   | autenticado          |
+| GET    | `/auth/me`       | autenticado          |
 
-> Con el admin puedes registrar más usuarios (operator / viewer) vía `POST /api/v1/auth/register`.
+**Dispositivos**
 
----
+| Método | Ruta                     | Quién            |
+|--------|--------------------------|------------------|
+| GET    | `/devices`               | todos            |
+| GET    | `/devices/:id`           | todos            |
+| POST   | `/devices`               | admin, operator  |
+| PUT    | `/devices/:id`           | admin, operator  |
+| PATCH  | `/devices/:id/status`    | admin, operator  |
+| DELETE | `/devices/:id`           | admin            |
+| GET    | `/devices/:id/readings`  | todos            |
+| GET    | `/devices/:id/alerts`    | todos            |
+| GET    | `/devices/stats/summary` | todos            |
 
-## 📡 Endpoints de la API
+**Lecturas**
 
-Base URL: `http://localhost:3000/api/v1`
+| Método | Ruta                  | Quién    |
+|--------|-----------------------|----------|
+| GET    | `/readings`           | todos    |
+| POST   | `/readings/batch`     | sistema  |
+| GET    | `/readings/analytics` | todos    |
 
-### Autenticación
-| Método | Endpoint            | Roles         |
-|--------|---------------------|---------------|
-| POST   | `/auth/register`    | admin         |
-| POST   | `/auth/login`       | público       |
-| POST   | `/auth/refresh`     | autenticado   |
-| POST   | `/auth/logout`      | autenticado   |
-| GET    | `/auth/me`          | autenticado   |
+**Alertas**
 
-### Dispositivos
-| Método | Endpoint                  | Roles            |
+| Método | Ruta                      | Quién            |
 |--------|---------------------------|------------------|
-| GET    | `/devices`                | todos            |
-| GET    | `/devices/:id`            | todos            |
-| POST   | `/devices`                | admin, operator  |
-| PUT    | `/devices/:id`            | admin, operator  |
-| PATCH  | `/devices/:id/status`     | admin, operator  |
-| DELETE | `/devices/:id`            | admin            |
-| GET    | `/devices/:id/readings`   | todos            |
-| GET    | `/devices/:id/alerts`     | todos            |
-| GET    | `/devices/stats/summary`  | todos            |
+| GET    | `/alerts`                 | todos            |
+| PATCH  | `/alerts/:id/acknowledge` | admin, operator  |
+| PATCH  | `/alerts/:id/resolve`     | admin, operator  |
 
-### Lecturas
-| Método | Endpoint               | Roles    |
-|--------|------------------------|----------|
-| GET    | `/readings`            | todos    |
-| POST   | `/readings/batch`      | sistema  |
-| GET    | `/readings/analytics`  | todos    |
+**Dashboard**
 
-### Alertas
-| Método | Endpoint                   | Roles            |
-|--------|----------------------------|------------------|
-| GET    | `/alerts`                  | todos            |
-| PATCH  | `/alerts/:id/acknowledge`  | admin, operator  |
-| PATCH  | `/alerts/:id/resolve`      | admin, operator  |
+| Método | Ruta                      | Quién  |
+|--------|---------------------------|--------|
+| GET    | `/dashboard/overview`     | todos  |
+| GET    | `/dashboard/rack/:rackId` | todos  |
+| GET    | `/dashboard/trends`       | todos  |
 
-### Dashboard
-| Método | Endpoint                   | Roles  |
-|--------|----------------------------|--------|
-| GET    | `/dashboard/overview`      | todos  |
-| GET    | `/dashboard/rack/:rackId`  | todos  |
-| GET    | `/dashboard/trends`        | todos  |
 
----
+## Eventos de WebSocket
 
-## 📚 Documentación Swagger / Postman
+El servidor envía: `device:reading`, `device:status`, `alert:new`, `alert:resolved`,
+`dashboard:update`.
 
-- **Swagger UI:** http://localhost:3000/docs (especificación en `/docs.json`)
-- **Colección Postman:** [`docs/postman/salinas-iot-platform.postman_collection.json`](docs/postman/salinas-iot-platform.postman_collection.json)
+El cliente puede mandar: `subscribe:device`, `subscribe:rack`, `unsubscribe:device`,
+`unsubscribe:rack`, `acknowledge:alert`.
 
-Importa la colección en Postman, ejecuta primero el request de **Login** (guarda el token automáticamente
-en la variable `accessToken`) y luego el resto de los endpoints.
 
----
+## Variables de entorno
 
-## 🔌 WebSocket (tiempo real)
+**Backend**
 
-Conexión: `ws://localhost:3000` (Socket.io comparte el mismo servidor HTTP del backend)
+| Variable               | Para qué sirve                               | Por defecto              |
+|------------------------|----------------------------------------------|--------------------------|
+| `PORT`                 | Puerto del backend (REST y WebSocket)        | `3000`                   |
+| `DYNAMODB_ENDPOINT`    | Endpoint de DynamoDB                         | `http://localhost:8000`  |
+| `DYNAMODB_TABLE`       | Nombre de la tabla                           | `IoTData`                |
+| `JWT_ACCESS_SECRET`    | Secreto del access token                     | —                        |
+| `JWT_REFRESH_SECRET`   | Secreto del refresh token                    | —                        |
+| `JWT_ACCESS_EXPIRY`    | Vida del access token                        | `15m`                    |
+| `JWT_REFRESH_EXPIRY`   | Vida del refresh token                       | `7d`                     |
+| `CORS_ORIGIN`          | Origen permitido                             | `http://localhost:4200`  |
+| `SYSTEM_INGEST_KEY`    | Llave para la ingesta del gateway por HTTP   | `local-dev-ingest-key`   |
+| `MQTT_ENABLED`         | Activa el suscriptor MQTT del backend        | `false`                  |
+| `MQTT_BROKER_URL`      | URL del broker MQTT                          | `mqtt://localhost:1883`  |
+| `MQTT_TOPIC_PREFIX`    | Prefijo del topic a escuchar                 | `dt/devices`             |
 
-**Servidor → Cliente:** `device:reading`, `device:status`, `alert:new`, `alert:resolved`, `dashboard:update`
-**Cliente → Servidor:** `subscribe:device`, `subscribe:rack`, `unsubscribe:device`, `acknowledge:alert`
+**IoT Gateway**
 
----
+| Variable               | Para qué sirve                               | Por defecto             |
+|------------------------|----------------------------------------------|-------------------------|
+| `MQTT_MODE`            | `aws` (publica por MQTT) o `local` (por HTTP)| `local`                 |
+| `IOT_ENDPOINT`         | Broker MQTT al que publica                   | `mqtt://localhost:1883` |
+| `CERT_PATH`            | Certificados X.509 (solo para AWS real)      | `./certs/`              |
+| `BACKEND_URL`          | URL del backend (modo HTTP)                  | `http://backend:3000`   |
+| `PUBLISH_INTERVAL_MS`  | Cada cuánto publica                          | `5000`                  |
+| `ACTIVE_DEVICES`       | Cuántos dispositivos simula                  | `10`                    |
+| `ANOMALY_PROBABILITY`  | Probabilidad de una lectura fuera de umbral  | `0.05`                  |
+| `MQTT_TOPIC_PREFIX`    | Prefijo del topic                            | `dt/devices`            |
 
-## 🛰 IoT Gateway / Simulador
 
-Demonio Node.js que simula dispositivos IoT publicando lecturas realistas cada 5–10 s:
-
-- **temperature:** 18–45 °C (crítico > 35 °C)
-- **humidity:** 20–80 % (crítico > 70 %)
-- **power:** 0–100 kW
-- **ups:** carga 0–100 %
-- **cooling:** flujo en L/min
-
-Simula **anomalías** (probabilidad configurable, 5% por defecto) y **cambios de estado** (online → offline)
-con baja frecuencia. Se reconecta automáticamente. Incluido como servicio en `docker-compose`.
-
----
-
-## 📁 Estructura del proyecto
+## Estructura del proyecto
 
 ```
 salinas-iot-platform/
-├── backend/              # API REST + WebSocket (Node.js / Express / TS)
-│   └── src/
-│       ├── routes/       # Definición de endpoints
-│       ├── services/     # Lógica de negocio (devices, readings, alerts, auth...)
-│       ├── middleware/   # auth, rate-limit, validación, sanitización, errores
-│       ├── db/           # Cliente DynamoDB, init de tabla, seed de usuarios
-│       └── utils/        # logger, paginación, errores
-├── iot-gateway/          # Simulador de dispositivos (demonio)
-├── frontend/             # Aplicación Angular (en construcción)
-├── infrastructure/       # IaC con AWS CDK (diseño)
-├── docs/
-│   ├── postman/          # Colección Postman
-│   └── architecture/     # Diagrama de arquitectura
-└── docker-compose.yml    # Orquestación local
+├── backend/         API REST + WebSocket + suscriptor MQTT
+├── iot-gateway/     simulador de dispositivos
+├── frontend/        aplicación Angular (en construcción)
+├── infrastructure/  IaC con AWS CDK (diseño)
+├── mosquitto/       configuración del broker
+├── docs/            diagramas, colección Postman y guion del video
+└── docker-compose.yml
 ```
 
----
 
-## ☁️ Despliegue en AWS (diseño)
+## Si se quisiera llevar a AWS
 
-Arquitectura objetivo en producción:
+El diseño en la nube sería: el gateway en EC2 o ECS publicando por MQTT a AWS IoT Core; una IoT Rule
+que dispara una Lambda (o reenvía por HTTP) con la lógica de ingesta del backend; DynamoDB con TTL;
+API Gateway al frente; y el frontend en S3 + CloudFront. El directorio `infrastructure/` está pensado
+para describir esos recursos con AWS CDK.
 
-1. **IoT Gateway** en EC2 (servicio systemd) o ECS publicando por MQTT/TLS a **AWS IoT Core**.
-2. **IoT Rule** que invoca una **Lambda** (o reenvía por HTTP) con la lógica de ingesta del backend.
-3. **DynamoDB** con single-table design, GSI1 y TTL.
-4. **API Gateway** (REST + WebSocket) frente al backend.
-5. **S3 + CloudFront** sirviendo el frontend Angular.
 
-El directorio [`infrastructure/`](infrastructure/) contiene el proyecto **AWS CDK** para aprovisionar
-estos recursos. *(En progreso.)*
+## Video
 
----
-
-## 🎥 Video explicativo
-
-> 📺 **Enlace al video:** _(pendiente — se agregará aquí)_
-
-El video recorre: arquitectura y decisiones de diseño, el IoT Gateway en ejecución, el backend
-(estructura, endpoints, JWT, WebSockets, manejo de alertas), la infraestructura y una demo
-end-to-end en vivo.
-
----
-
-## 📝 Licencia
-
-MIT
+Enlace al video explicativo: _(pendiente)_
