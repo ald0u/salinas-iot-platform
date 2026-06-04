@@ -77,6 +77,7 @@ export async function acknowledgeAlert(alertId: string): Promise<Alert> {
     throw new AppError("Alerta no encontrada", 404, "NOT_FOUND");
   }
 
+  emitEvent("alert:acknowledged", result.Attributes);
   return result.Attributes as Alert;
 }
 

@@ -24,6 +24,10 @@ export function initSocket(httpServer: HttpServer, corsOrigin: string): Server {
       socket.join(`rack:${rackId}`);
     });
 
+    socket.on("unsubscribe:rack", (rackId: string) => {
+      socket.leave(`rack:${rackId}`);
+    });
+
     socket.on("acknowledge:alert", (alertId: string) => {
       io?.emit("alert:acknowledged", { alertId });
     });
