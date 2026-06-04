@@ -3,6 +3,7 @@ import { app } from "./app.js";
 import { env } from "./config/env.js";
 import { logger } from "./utils/logger.js";
 import { initSocket } from "./services/socket.service.js";
+import { initMqttSubscriber } from "./services/mqtt.service.js";
 import { initializeTable } from "./db/dynamodb.js";
 
 async function bootstrap(): Promise<void> {
@@ -10,6 +11,7 @@ async function bootstrap(): Promise<void> {
 
   const server = http.createServer(app);
   initSocket(server, env.corsOrigin);
+  initMqttSubscriber();
 
   server.listen(env.port, () => {
     logger.info("Backend iniciado", {

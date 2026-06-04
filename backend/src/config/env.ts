@@ -25,4 +25,7 @@ export const env = {
   kpiCacheTtl: toNumber(process.env.KPI_CACHE_TTL_SECONDS, 10),
   activeDevices: toNumber(process.env.ACTIVE_DEVICES, 20),
   anomalyProbability: toFloat(process.env.ANOMALY_PROBABILITY, 0.05),
+  mqttEnabled: (process.env.MQTT_ENABLED || "false") === "true",
+  mqttBrokerUrl: process.env.MQTT_BROKER_URL || "mqtt://localhost:1883",
+  mqttTopicPrefix: process.env.MQTT_TOPIC_PREFIX || "dt/devices",
 };
