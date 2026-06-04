@@ -1,5 +1,8 @@
 import axios from "axios";
 import dotenv from "dotenv";
+import mqtt from "mqtt";
+import fs from "node:fs";
+import path from "node:path";
 import { randomUUID } from "node:crypto";
 
 dotenv.config();
@@ -9,6 +12,10 @@ type ReadingQuality = "good" | "uncertain" | "bad";
 
 type SimulatedDevice = {
   deviceId: string;
+  name: string;
+  rack: string;
+  position: number;
+  floor: number;
   type: DeviceType;
   unit: string;
   baseValue: number;
@@ -35,8 +42,17 @@ const anomalyProbability = Number(process.env.ANOMALY_PROBABILITY || 0.05);
 const mqttMode = process.env.MQTT_MODE || "local";
 const systemKey = process.env.SYSTEM_INGEST_KEY || "local-dev-ingest-key";
 const topicPrefix = process.env.MQTT_TOPIC_PREFIX || "dt/devices";
+const iotEndpoint = process.env.IOT_ENDPOINT || "mqtt://localhost:1883";
+const certPath = process.env.CERT_PATH || "./certs/";
+const adminEmail = process.env.ADMIN_EMAIL || "admin@salinas.local";
+const adminPassword = process.env.ADMIN_PASSWORD || "Admin1234!";
 
-const typeConfigs: Record<DeviceType, Omit<SimulatedDevice, "deviceId" | "status" | "nextPublishAt">> = {
+let mqttClient: mqtt.MqttClient | null = null;
+
+const typeConfigs: Record<
+  DeviceType,
+  Omit<SimulatedDevice, "deviceId" | "status" | "nextPublishAt" | "name" | "rack" | "position" | "floor">
+> = {
   temperature: {
     type: "temperature",
     unit: "°C",
@@ -94,6 +110,10 @@ function createDevice(index: number): SimulatedDevice {
 
   return {
     deviceId: randomUUID(),
+    name: `${config.type}-${String(index + 1).padStart(2, "0")}`,
+    rack: `A${(index % 5) + 1}`,
+    position: index + 1,
+    floor: 1,
     type: config.type,
     unit: config.unit,
     baseValue: config.baseValue,
@@ -104,6 +124,66 @@ function createDevice(index: number): SimulatedDevice {
     status: "online",
     nextPublishAt: Date.now() + randomIntervalMs(),
   };
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Registra los dispositivos simulados en el backend (control plane vía HTTP).
+ * Usa el deviceId asignado por el backend para que las lecturas publicadas por
+ * MQTT (data plane) coincidan y se evalúen contra sus umbrales.
+ */
+async function registerDevices(devices: SimulatedDevice[]): Promise<void> {
+  let token = "";
+
+  for (let attempt = 1; attempt <= 10; attempt += 1) {
+    try {
+      const res = await axios.post(
+        `${backendUrl}/api/v1/auth/login`,
+        { email: adminEmail, password: adminPassword },
+        { timeout: 10000 },
+      );
+      token = res.data.tokens.accessToken;
+      break;
+    } catch {
+      logState(`Login al backend falló (intento ${attempt}/10), reintentando...`);
+      await delay(3000);
+    }
+  }
+
+  if (!token) {
+    logState("No se pudo autenticar con el backend; se omite el registro de dispositivos");
+    return;
+  }
+
+  for (const device of devices) {
+    try {
+      const res = await axios.post(
+        `${backendUrl}/api/v1/devices`,
+        {
+          name: device.name,
+          type: device.type,
+          location: { rack: device.rack, position: device.position, floor: device.floor },
+          status: "online",
+          thresholds: {
+            min: device.min,
+            max: device.max,
+            criticalMin: device.criticalMin,
+            criticalMax: device.criticalMax,
+          },
+          metadata: { manufacturer: "ACME", model: `SIM-${device.type}`, firmwareVersion: "1.0.0" },
+        },
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 },
+      );
+      device.deviceId = res.data.deviceId;
+    } catch (error) {
+      logState(`Error registrando ${device.name}`, error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  logState(`Registrados ${devices.length} dispositivos en el backend`);
 }
 
 function randomIntervalMs(): number {
@@ -169,6 +249,47 @@ async function publishLocalBatch(readings: Reading[]): Promise<void> {
   );
 }
 
+function buildMqttOptions(): mqtt.IClientOptions {
+  const options: mqtt.IClientOptions = { reconnectPeriod: 3000 };
+
+  if (iotEndpoint.startsWith("mqtts")) {
+    try {
+      options.key = fs.readFileSync(path.join(certPath, "private.key"));
+      options.cert = fs.readFileSync(path.join(certPath, "certificate.pem"));
+      options.ca = fs.readFileSync(path.join(certPath, "AmazonRootCA1.pem"));
+    } catch (error) {
+      logState("No se pudieron cargar los certificados X.509", error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  return options;
+}
+
+function connectMqtt(): void {
+  mqttClient = mqtt.connect(iotEndpoint, buildMqttOptions());
+
+  mqttClient.on("connect", () => {
+    logState(`Conectado a broker MQTT: ${iotEndpoint}`);
+  });
+
+  mqttClient.on("reconnect", () => {
+    logState("Reconectando a broker MQTT...");
+  });
+
+  mqttClient.on("error", (error) => {
+    logState("Error MQTT", error instanceof Error ? error.message : String(error));
+  });
+}
+
+function publishMqtt(reading: Reading): void {
+  if (!mqttClient || !mqttClient.connected) {
+    return;
+  }
+
+  const topic = `${topicPrefix}/${reading.deviceId}/telemetry`;
+  mqttClient.publish(topic, JSON.stringify(reading), { qos: 0 });
+}
+
 function logState(message: string, meta?: unknown): void {
   if (meta) {
     console.log(`[gateway] ${message}`, meta);
@@ -201,8 +322,12 @@ async function tick(devices: SimulatedDevice[]): Promise<void> {
     device.nextPublishAt = now + randomIntervalMs();
 
     if (mqttMode === "aws") {
-      logState(`MQTT publish pending for ${topicPrefix}/${device.deviceId}/telemetry`, reading);
+      publishMqtt(reading);
     }
+  }
+
+  if (mqttMode === "aws" && dueReadings.length > 0) {
+    logState(`Publicadas ${dueReadings.length} lecturas vía MQTT a ${topicPrefix}/{deviceId}/telemetry`);
   }
 
   if (mqttMode === "local") {
@@ -223,11 +348,17 @@ async function main(): Promise<void> {
   logState("Gateway iniciado", {
     mqttMode,
     backendUrl,
+    iotEndpoint: mqttMode === "aws" ? iotEndpoint : undefined,
     activeDevices,
     publishIntervalMs,
     anomalyProbability,
   });
 
+  if (mqttMode === "aws") {
+    connectMqtt();
+  }
+
+  await registerDevices(devices);
   await tick(devices);
   setInterval(() => {
     void tick(devices);
