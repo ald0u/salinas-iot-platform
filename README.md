@@ -221,13 +221,30 @@ El cliente puede mandar: `subscribe:device`, `subscribe:rack`, `unsubscribe:devi
 
 ```
 salinas-iot-platform/
-├── backend/         API REST + WebSocket + suscriptor MQTT
-├── iot-gateway/     simulador de dispositivos
-├── frontend/        aplicación Angular (en construcción)
-├── infrastructure/  IaC con AWS CDK (diseño)
-├── mosquitto/       configuración del broker
-├── docs/            diagramas, colección Postman y guion del video
-└── docker-compose.yml
+├── backend/                     API REST + WebSocket + suscriptor MQTT (Express / TS)
+│   ├── src/
+│   │   ├── config/              env.ts — configuración por variables de entorno
+│   │   ├── db/                  cliente DynamoDB, creación de tabla y seed del admin
+│   │   ├── middleware/          auth, rate-limit, validación, sanitización, errores
+│   │   ├── routes/              auth, devices, readings, alerts, dashboard
+│   │   ├── services/            auth, device, reading, alert, dashboard, socket, token, mqtt
+│   │   ├── types/               tipos del dominio
+│   │   ├── utils/               logger, errores, paginación
+│   │   ├── app.ts               configuración de Express
+│   │   ├── server.ts            arranque: HTTP + WebSocket + suscriptor MQTT
+│   │   └── swagger.ts           documentación OpenAPI
+│   ├── Dockerfile.dev
+│   └── package.json
+├── iot-gateway/                 simulador de dispositivos (demonio Node.js)
+│   └── src/index.ts
+├── frontend/                    aplicación Angular (en construcción)
+├── infrastructure/              IaC con AWS CDK (en progreso)
+├── mosquitto/
+│   └── mosquitto.conf           configuración del broker MQTT
+├── docs/
+│   ├── architecture/            diagramas y decisiones de diseño
+│   └── postman/                 colección de la API
+└── docker-compose.yml           orquesta todo en local
 ```
 
 
