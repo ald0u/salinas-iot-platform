@@ -2,7 +2,7 @@
   "info": {
     "name": "Salinas IoT Platform API",
     "_postman_id": "8d6b2c2e-f3ae-4c2d-9d5c-2e2c2fd0a001",
-    "description": "Colección base para la API del backend IoT",
+    "description": "Colección completa de la API del backend IoT (Grupo Salinas DC).\n\nFlujo recomendado:\n1. Ejecuta **Auth > Login** (guarda accessToken y refreshToken automáticamente).\n2. Ejecuta **Devices > Create Device** (guarda deviceId automáticamente).\n3. El resto de endpoints ya usan esas variables.\n\nVariables: baseUrl, accessToken, refreshToken, systemKey, deviceId, alertId, rackId.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -27,7 +27,43 @@
       "name": "Auth",
       "item": [
         {
+          "name": "Register (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"operator@salinas.local\",\n  \"password\": \"Operator1234!\",\n  \"role\": \"operator\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "register"]
+            },
+            "description": "Crea un usuario nuevo. Requiere token de un usuario admin."
+          }
+        },
+        {
           "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.tokens) {",
+                  "  pm.collectionVariables.set('accessToken', body.tokens.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', body.tokens.refreshToken);",
+                  "  console.log('accessToken y refreshToken guardados');",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -39,7 +75,64 @@
               "raw": "{{baseUrl}}/api/v1/auth/login",
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Autenticación pública. Guarda automáticamente accessToken y refreshToken."
+          }
+        },
+        {
+          "name": "Refresh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.accessToken) {",
+                  "  pm.collectionVariables.set('accessToken', body.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', body.refreshToken);",
+                  "  console.log('Tokens rotados y guardados');",
+                  "}"
+                ]
+              }
             }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "refresh"]
+            },
+            "description": "Rota el refresh token y emite un nuevo access token."
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "logout"]
+            },
+            "description": "Revoca el refresh token indicado."
           }
         },
         {
@@ -51,7 +144,8 @@
               "raw": "{{baseUrl}}/api/v1/auth/me",
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "auth", "me"]
-            }
+            },
+            "description": "Devuelve el usuario autenticado."
           }
         }
       ]
@@ -68,23 +162,150 @@
               "raw": "{{baseUrl}}/api/v1/devices?limit=20",
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "devices"],
-              "query": [{ "key": "limit", "value": "20" }]
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Lista dispositivos con paginación cursor-based."
+          }
+        },
+        {
+          "name": "Get Device Stats Summary",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/devices/stats/summary",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "devices", "stats", "summary"]
+            },
+            "description": "Resumen de dispositivos por estado (online/offline/etc.)."
+          }
+        },
+        {
+          "name": "Get Device By Id",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/devices/{{deviceId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "devices", "{{deviceId}}"]
             }
           }
         },
         {
           "name": "Create Device",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.deviceId) {",
+                  "  pm.collectionVariables.set('deviceId', body.deviceId);",
+                  "  console.log('deviceId guardado: ' + body.deviceId);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
               { "key": "Authorization", "value": "Bearer {{accessToken}}" },
               { "key": "Content-Type", "value": "application/json" }
             ],
-            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Rack Temp Sensor 01\",\n  \"type\": \"temperature\",\n  \"location\": { \"rack\": \"A1\", \"position\": 1, \"floor\": 1 },\n  \"status\": \"online\",\n  \"thresholds\": { \"min\": 18, \"max\": 30, \"criticalMin\": 15, \"criticalMax\": 35 },\n  \"metadata\": { \"manufacturer\": \"ACME\", \"model\": \"TMP-100\", \"firmwareVersion\": \"1.0.0\" }\n}" },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rack Temp Sensor 01\",\n  \"type\": \"temperature\",\n  \"location\": { \"rack\": \"A1\", \"position\": 1, \"floor\": 1 },\n  \"status\": \"online\",\n  \"thresholds\": { \"min\": 18, \"max\": 30, \"criticalMin\": 15, \"criticalMax\": 35 },\n  \"metadata\": { \"manufacturer\": \"ACME\", \"model\": \"TMP-100\", \"firmwareVersion\": \"1.0.0\" }\n}"
+            },
             "url": {
               "raw": "{{baseUrl}}/api/v1/devices",
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "devices"]
+            },
+            "description": "Crea un dispositivo (admin/operator). Guarda deviceId automáticamente."
+          }
+        },
+        {
+          "name": "Update Device",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rack Temp Sensor 01 (actualizado)\",\n  \"type\": \"temperature\",\n  \"location\": { \"rack\": \"A1\", \"position\": 2, \"floor\": 1 },\n  \"status\": \"online\",\n  \"thresholds\": { \"min\": 18, \"max\": 28, \"criticalMin\": 15, \"criticalMax\": 35 },\n  \"metadata\": { \"manufacturer\": \"ACME\", \"model\": \"TMP-100\", \"firmwareVersion\": \"1.1.0\" }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/devices/{{deviceId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "devices", "{{deviceId}}"]
+            },
+            "description": "Actualiza un dispositivo completo (admin/operator)."
+          }
+        },
+        {
+          "name": "Patch Device Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"maintenance\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/devices/{{deviceId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "devices", "{{deviceId}}", "status"]
+            },
+            "description": "Cambia el estado del dispositivo (admin/operator). Emite device:status por WebSocket."
+          }
+        },
+        {
+          "name": "Delete Device",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/devices/{{deviceId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "devices", "{{deviceId}}"]
+            },
+            "description": "Elimina un dispositivo (solo admin)."
+          }
+        },
+        {
+          "name": "Get Device Readings",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/devices/{{deviceId}}/readings?limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "devices", "{{deviceId}}", "readings"],
+              "query": [{ "key": "limit", "value": "50" }]
+            }
+          }
+        },
+        {
+          "name": "Get Device Alerts",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/devices/{{deviceId}}/alerts?limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "devices", "{{deviceId}}", "alerts"],
+              "query": [{ "key": "limit", "value": "50" }]
             }
           }
         }
@@ -94,7 +315,24 @@
       "name": "Readings",
       "item": [
         {
-          "name": "Batch Ingest",
+          "name": "List Readings",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/readings?limit=100",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "readings"],
+              "query": [
+                { "key": "limit", "value": "100" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Lista lecturas con paginación cursor-based."
+          }
+        },
+        {
+          "name": "Batch Ingest (sistema)",
           "request": {
             "method": "POST",
             "header": [
@@ -109,7 +347,42 @@
               "raw": "{{baseUrl}}/api/v1/readings/batch",
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "readings", "batch"]
-            }
+            },
+            "description": "Ingesta de lecturas del gateway. Requiere header x-system-key o token autenticado."
+          }
+        },
+        {
+          "name": "Readings Analytics",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/readings/analytics?deviceId={{deviceId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "readings", "analytics"],
+              "query": [{ "key": "deviceId", "value": "{{deviceId}}" }]
+            },
+            "description": "Agregados (total, promedio, min, max). El parámetro deviceId es opcional."
+          }
+        },
+        {
+          "name": "Ingest Single Reading",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deviceId\": \"{{deviceId}}\",\n  \"value\": 38.2,\n  \"unit\": \"°C\",\n  \"quality\": \"good\",\n  \"timestamp\": \"2026-06-03T12:05:00.000Z\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/readings/single",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "readings", "single"]
+            },
+            "description": "Ingesta de una sola lectura (autenticado). Útil para forzar una alerta crítica en la demo."
           }
         }
       ]
@@ -119,6 +392,22 @@
       "item": [
         {
           "name": "List Alerts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const items = body.items || body.data || [];",
+                  "if (items.length && items[0].alertId) {",
+                  "  pm.collectionVariables.set('alertId', items[0].alertId);",
+                  "  console.log('alertId guardado: ' + items[0].alertId);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
@@ -126,8 +415,38 @@
               "raw": "{{baseUrl}}/api/v1/alerts?limit=20",
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "alerts"],
-              "query": [{ "key": "limit", "value": "20" }]
-            }
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Lista alertas. Guarda el primer alertId para los siguientes requests."
+          }
+        },
+        {
+          "name": "Acknowledge Alert",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/alerts/{{alertId}}/acknowledge",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "alerts", "{{alertId}}", "acknowledge"]
+            },
+            "description": "Reconoce una alerta (admin/operator)."
+          }
+        },
+        {
+          "name": "Resolve Alert",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/alerts/{{alertId}}/resolve",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "alerts", "{{alertId}}", "resolve"]
+            },
+            "description": "Resuelve una alerta (admin/operator). Emite alert:resolved por WebSocket."
           }
         }
       ]
@@ -144,7 +463,35 @@
               "raw": "{{baseUrl}}/api/v1/dashboard/overview",
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "dashboard", "overview"]
-            }
+            },
+            "description": "KPIs generales (con caché en memoria, TTL 10s)."
+          }
+        },
+        {
+          "name": "Rack Overview",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/dashboard/rack/{{rackId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "dashboard", "rack", "{{rackId}}"]
+            },
+            "description": "Resumen de un rack específico (ej. rackId = A1)."
+          }
+        },
+        {
+          "name": "Trends",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/dashboard/trends?hours=24",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "dashboard", "trends"],
+              "query": [{ "key": "hours", "value": "24" }]
+            },
+            "description": "Tendencias de las últimas N horas (default 24)."
           }
         }
       ]
@@ -153,7 +500,10 @@
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:3000" },
     { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
     { "key": "systemKey", "value": "local-dev-ingest-key" },
-    { "key": "deviceId", "value": "" }
+    { "key": "deviceId", "value": "" },
+    { "key": "alertId", "value": "" },
+    { "key": "rackId", "value": "A1" }
   ]
 }
