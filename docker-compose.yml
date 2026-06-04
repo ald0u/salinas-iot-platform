@@ -39,7 +39,7 @@ services:
       - dynamodb-local
     networks:
       - iot-network
-    command: sh -c "npm run build && npm run start"
+    command: sh -c "npm run build && until npm run db:init; do echo 'esperando a DynamoDB...'; sleep 2; done && (npm run db:seed || true) && npm run start"
 
   iot-gateway:
     build:
