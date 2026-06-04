@@ -31,6 +31,19 @@ const spec = swaggerJSDoc({
             accessToken: { type: "string" },
             refreshToken: { type: "string" },
           },
+          example: {
+            accessToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+            refreshToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+          },
+        },
+        LoginRequest: {
+          type: "object",
+          required: ["email", "password"],
+          properties: {
+            email: { type: "string", format: "email" },
+            password: { type: "string" },
+          },
+          example: { email: "admin@salinas.local", password: "Admin1234!" },
         },
         UserSafe: {
           type: "object",
@@ -57,6 +70,23 @@ const spec = swaggerJSDoc({
               },
             },
             status: { type: "string", enum: ["online", "offline", "maintenance", "critical"] },
+            thresholds: {
+              type: "object",
+              properties: {
+                min: { type: "number" },
+                max: { type: "number" },
+                criticalMin: { type: "number" },
+                criticalMax: { type: "number" },
+              },
+            },
+          },
+          example: {
+            deviceId: "b3f1c2a4-1234-4abc-9def-0123456789ab",
+            name: "Rack Temp Sensor 01",
+            type: "temperature",
+            location: { rack: "A1", position: 1, floor: 1 },
+            status: "online",
+            thresholds: { min: 18, max: 30, criticalMin: 15, criticalMax: 35 },
           },
         },
         Reading: {
@@ -67,6 +97,13 @@ const spec = swaggerJSDoc({
             unit: { type: "string" },
             quality: { type: "string", enum: ["good", "uncertain", "bad"] },
             timestamp: { type: "string", format: "date-time" },
+          },
+          example: {
+            deviceId: "b3f1c2a4-1234-4abc-9def-0123456789ab",
+            value: 23.5,
+            unit: "°C",
+            quality: "good",
+            timestamp: "2026-06-03T12:00:00.000Z",
           },
         },
         Alert: {
@@ -80,6 +117,15 @@ const spec = swaggerJSDoc({
             acknowledged: { type: "boolean" },
             resolvedAt: { type: "string", nullable: true },
           },
+          example: {
+            alertId: "a1b2c3d4-5678-4abc-9def-0123456789ab",
+            deviceId: "b3f1c2a4-1234-4abc-9def-0123456789ab",
+            severity: "critical",
+            type: "threshold_exceeded",
+            message: "Temperatura 38.2°C excede el umbral crítico (35°C)",
+            acknowledged: false,
+            resolvedAt: null,
+          },
         },
       },
     },
@@ -89,7 +135,28 @@ const spec = swaggerJSDoc({
       "/api/v1/auth/login": {
         post: {
           summary: "Login",
-          responses: { 200: { description: "Tokens" } },
+          security: [],
+          requestBody: {
+            required: true,
+            content: { "application/json": { schema: { $ref: "#/components/schemas/LoginRequest" } } },
+          },
+          responses: {
+            200: {
+              description: "Tokens",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      user: { $ref: "#/components/schemas/UserSafe" },
+                      tokens: { $ref: "#/components/schemas/AuthTokens" },
+                    },
+                  },
+                },
+              },
+            },
+            401: { description: "Credenciales inválidas" },
+          },
         },
       },
       "/api/v1/auth/register": { post: { summary: "Register user", security: [{ bearerAuth: [] }], responses: { 201: { description: "User created" } } } },
