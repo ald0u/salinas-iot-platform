@@ -120,8 +120,9 @@ devicesRouter.delete("/:id", requireRoles("admin"), async (req, res, next) => {
 devicesRouter.get("/:id/readings", async (req, res, next) => {
   try {
     const limit = Number(req.query.limit || 50);
-    const items = await getDeviceReadings(req.params.id, limit);
-    res.json({ items });
+    const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+    const result = await getDeviceReadings(req.params.id, limit, cursor);
+    res.json(result);
   } catch (error) {
     next(error);
   }

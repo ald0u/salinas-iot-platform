@@ -150,7 +150,13 @@ export async function getDeviceStatsSummary(): Promise<Record<string, number>> {
   };
 }
 
-export async function getDeviceReadings(deviceId: string, limit = 50): Promise<unknown[]> {
+export async function getDeviceReadings(
+  deviceId: string,
+  limit = 50,
+  cursor?: string,
+): Promise<{ items: unknown[]; nextCursor?: string }> {
+  const startKey = decodeCursor(cursor);
+
   const result = await ddbDocClient.send(
     new QueryCommand({
       TableName: env.dynamodbTable,
@@ -161,10 +167,16 @@ export async function getDeviceReadings(deviceId: string, limit = 50): Promise<u
       },
       ScanIndexForward: false,
       Limit: limit,
+      ExclusiveStartKey: startKey,
     }),
   );
 
-  return result.Items || [];
+  const items = result.Items || [];
+  const nextCursor = result.LastEvaluatedKey
+    ? encodeCursor({ PK: String(result.LastEvaluatedKey.PK), SK: String(result.LastEvaluatedKey.SK) })
+    : undefined;
+
+  return { items, nextCursor };
 }
 
 export async function getDeviceAlerts(deviceId: string, limit = 50): Promise<unknown[]> {
