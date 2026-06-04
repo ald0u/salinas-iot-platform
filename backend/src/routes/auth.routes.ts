@@ -7,13 +7,13 @@ import { loginUser, refreshTokens, registerUser } from "../services/auth.service
 import { revokeRefreshToken } from "../services/token.service.js";
 
 const registerSchema = Joi.object({
-  email: Joi.string().email().required(),
+  email: Joi.string().trim().lowercase().email({ tlds: { allow: false } }).required(),
   password: Joi.string().min(8).required(),
   role: Joi.string().valid("admin", "operator", "viewer").required(),
 });
 
 const loginSchema = Joi.object({
-  email: Joi.string().email().required(),
+  email: Joi.string().trim().lowercase().email({ tlds: { allow: false } }).required(),
   password: Joi.string().required(),
 });
 

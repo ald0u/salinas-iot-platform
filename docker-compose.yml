@@ -31,6 +31,7 @@ services:
       - JWT_ACCESS_EXPIRY=15m
       - JWT_REFRESH_EXPIRY=7d
       - CORS_ORIGIN=http://localhost:4200
+      - SYSTEM_INGEST_KEY=local-dev-ingest-key
     volumes:
       - ./backend:/app
       - /app/node_modules
@@ -38,7 +39,7 @@ services:
       - dynamodb-local
     networks:
       - iot-network
-    command: npm run dev
+    command: sh -c "npm run build && npm run start"
 
   iot-gateway:
     build:
@@ -52,6 +53,8 @@ services:
       - PUBLISH_INTERVAL_MS=5000
       - ACTIVE_DEVICES=10
       - ANOMALY_PROBABILITY=0.05
+      - SYSTEM_INGEST_KEY=local-dev-ingest-key
+      - MQTT_TOPIC_PREFIX=dt/devices
     volumes:
       - ./iot-gateway:/app
       - /app/node_modules

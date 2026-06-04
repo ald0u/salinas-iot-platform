@@ -7,6 +7,7 @@ import { getDevice } from "./device.service.js";
 import { createAlert } from "./alert.service.js";
 import { emitEvent } from "./socket.service.js";
 import { decodeCursor, encodeCursor } from "../utils/pagination.js";
+import { AppError } from "../utils/errors.js";
 
 export interface ReadingInput {
   deviceId: string;
@@ -31,7 +32,14 @@ function evaluateSeverity(device: Device, value: number): "ok" | "warning" | "cr
 }
 
 export async function ingestReading(input: ReadingInput): Promise<Reading> {
-  const device = await getDevice(input.deviceId);
+  let device: Device | null = null;
+  try {
+    device = await getDevice(input.deviceId);
+  } catch (error) {
+    if (!(error instanceof AppError && error.code === "NOT_FOUND")) {
+      throw error;
+    }
+  }
 
   const item: Reading = {
     PK: `DEVICE#${input.deviceId}`,
@@ -52,23 +60,25 @@ export async function ingestReading(input: ReadingInput): Promise<Reading> {
     }),
   );
 
-  const severity = evaluateSeverity(device, input.value);
-  if (severity === "warning") {
-    await createAlert({
-      deviceId: input.deviceId,
-      severity: "warning",
-      type: "threshold_exceeded",
-      message: `Valor fuera de umbral para ${device.name}: ${input.value}${input.unit}`,
-    });
-  }
+  if (device) {
+    const severity = evaluateSeverity(device, input.value);
+    if (severity === "warning") {
+      await createAlert({
+        deviceId: input.deviceId,
+        severity: "warning",
+        type: "threshold_exceeded",
+        message: `Valor fuera de umbral para ${device.name}: ${input.value}${input.unit}`,
+      });
+    }
 
-  if (severity === "critical") {
-    await createAlert({
-      deviceId: input.deviceId,
-      severity: "critical",
-      type: "threshold_exceeded",
-      message: `Valor crítico para ${device.name}: ${input.value}${input.unit}`,
-    });
+    if (severity === "critical") {
+      await createAlert({
+        deviceId: input.deviceId,
+        severity: "critical",
+        type: "threshold_exceeded",
+        message: `Valor crítico para ${device.name}: ${input.value}${input.unit}`,
+      });
+    }
   }
 
   emitEvent("device:reading", item);
