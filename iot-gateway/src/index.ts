@@ -204,9 +204,8 @@ function makeReading(device: SimulatedDevice): Reading {
   const anomaly = isAnomaly();
 
   let value = rawValue;
-  if (anomaly) {
-    value = device.criticalMax + 5 + Math.random() * 10;
-  }
+  
+  if (anomaly) value = device.criticalMax + 5 + Math.random() * 10;
 
   if (device.type === "temperature") {
     value = Number(value.toFixed(1));
