@@ -92,13 +92,17 @@ de entorno**.
 
 | Componente AWS (diseño)   | Equivalente local (ejecución actual)                       |
 |---------------------------|------------------------------------------------------------|
-| AWS IoT Core (MQTT/TLS)   | Gateway publica vía HTTP `POST /readings/batch` (`MQTT_MODE=local`) |
+| AWS IoT Core (MQTT/TLS)   | **Mosquitto** (broker MQTT en contenedor) — `MQTT_MODE=aws`, `IOT_ENDPOINT=mqtt://mosquitto:1883` |
+| IoT Rule                  | Suscriptor MQTT del backend (`mqtt.service.ts`)            |
 | DynamoDB                  | DynamoDB Local (contenedor)                                 |
 | Lambda / EC2 receptor     | Backend Node.js en contenedor                              |
 | API Gateway (REST + WS)   | Express + Socket.io                                        |
 | S3 + CloudFront           | Frontend Angular servido localmente                        |
 
-El payload de telemetría y la lógica de ingesta son **idénticos** en ambos modos; solo cambia el transporte.
+El payload de telemetría y la lógica de ingesta son **idénticos** sin importar el transporte:
+el gateway publica por MQTT a Mosquitto (igual que lo haría a AWS IoT Core con `mqtts://` + certificados
+X.509), y el backend se suscribe al topic `dt/devices/{deviceId}/telemetry`. También existe un modo
+`MQTT_MODE=local` que publica por HTTP (`POST /readings/batch`) como fallback sin broker.
 
 ---
 
@@ -125,7 +129,8 @@ Esto levanta:
 | Servicio        | URL                          | Descripción                       |
 |-----------------|------------------------------|-----------------------------------|
 | Backend REST    | http://localhost:3000        | API REST `/api/v1`                |
-| Backend WS      | ws://localhost:3001          | WebSocket (tiempo real)           |
+| Backend WS      | ws://localhost:3000          | WebSocket (Socket.io, comparte el servidor HTTP) |
+| Broker MQTT     | mqtt://localhost:1883        | Mosquitto (equivalente a AWS IoT Core) |
 | Swagger UI      | http://localhost:3000/docs   | Documentación interactiva         |
 | Health check    | http://localhost:3000/health | Estado del servicio               |
 | DynamoDB Local  | http://localhost:8000        | Base de datos                     |
@@ -185,6 +190,9 @@ npm run dev
 | `CORS_ORIGIN`          | Origen permitido (CORS)                      | `http://localhost:4200`    |
 | `SYSTEM_INGEST_KEY`    | Llave para ingesta de lecturas del gateway   | `local-dev-ingest-key`     |
 | `KPI_CACHE_TTL_SECONDS`| TTL de la caché de KPIs                       | `10`                       |
+| `MQTT_ENABLED`         | Activa el suscriptor MQTT (IoT Rule receptor)| `false`                    |
+| `MQTT_BROKER_URL`      | URL del broker MQTT (Mosquitto / IoT Core)   | `mqtt://localhost:1883`    |
+| `MQTT_TOPIC_PREFIX`    | Prefijo del topic a suscribir                | `dt/devices`               |
 
 ### IoT Gateway
 
@@ -275,7 +283,7 @@ en la variable `accessToken`) y luego el resto de los endpoints.
 
 ## 🔌 WebSocket (tiempo real)
 
-Conexión: `ws://localhost:3001`
+Conexión: `ws://localhost:3000` (Socket.io comparte el mismo servidor HTTP del backend)
 
 **Servidor → Cliente:** `device:reading`, `device:status`, `alert:new`, `alert:resolved`, `dashboard:update`
 **Cliente → Servidor:** `subscribe:device`, `subscribe:rack`, `unsubscribe:device`, `acknowledge:alert`
