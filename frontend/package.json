@@ -12,16 +12,21 @@
   "private": true,
   "packageManager": "npm@10.8.2",
   "dependencies": {
+    "@angular/animations": "^22.0.0",
+    "@angular/cdk": "^22.0.0",
     "@angular/common": "^22.0.0",
     "@angular/compiler": "^22.0.0",
     "@angular/core": "^22.0.0",
     "@angular/forms": "^22.0.0",
+    "@angular/material": "^22.0.0",
     "@angular/platform-browser": "^22.0.0",
     "@angular/platform-server": "^22.0.0",
     "@angular/router": "^22.0.0",
     "@angular/ssr": "^22.0.0",
+    "chart.js": "^4.5.1",
     "express": "^5.1.0",
     "rxjs": "~7.8.0",
+    "socket.io-client": "^4.8.3",
     "tslib": "^2.3.0"
   },
   "devDependencies": {
