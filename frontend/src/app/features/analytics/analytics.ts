@@ -66,7 +66,7 @@ interface TrendRow {
         </mat-card>
         <mat-card class="chart-card">
           <mat-card-header><mat-card-title>Volumen de lecturas por dispositivo</mat-card-title></mat-card-header>
-          <div class="chart-box"><app-chart type="line" [data]="countChart()" /></div>
+          <div class="chart-box"><app-chart type="polarArea" [data]="countChart()" /></div>
         </mat-card>
       </div>
 
@@ -144,6 +144,11 @@ export class Analytics {
     };
   });
 
+  private palette = [
+    '#1565c0', '#2e7d32', '#f9a825', '#c62828', '#6a1b9a', '#00838f',
+    '#ef6c00', '#558b2f', '#0277bd', '#ad1457', '#4527a0', '#00695c',
+  ];
+
   protected countChart = computed<ChartConfiguration['data']>(() => {
     const top = this.rows().slice(0, 12);
     return {
@@ -152,10 +157,7 @@ export class Analytics {
         {
           label: 'Lecturas',
           data: top.map((r) => r.count),
-          borderColor: '#1565c0',
-          backgroundColor: 'rgba(21,101,192,0.15)',
-          fill: true,
-          tension: 0.3,
+          backgroundColor: top.map((_, i) => this.palette[i % this.palette.length]),
         },
       ],
     };
