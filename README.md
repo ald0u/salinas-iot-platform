@@ -257,17 +257,29 @@ salinas-iot-platform/
 │   │   ├── db/                  cliente DynamoDB, creación de tabla y seed del admin
 │   │   ├── middleware/          auth, rate-limit, validación, sanitización, errores
 │   │   ├── routes/              auth, devices, readings, alerts, dashboard
-│   │   ├── services/            auth, device, reading, alert, dashboard, socket, token, mqtt
+│   │   ├── services/            auth, device, reading, alert, dashboard, socket, token, mqtt, maintenance
 │   │   ├── types/               tipos del dominio
 │   │   ├── utils/               logger, errores, paginación
 │   │   ├── app.ts               configuración de Express
-│   │   ├── server.ts            arranque: HTTP + WebSocket + suscriptor MQTT
+│   │   ├── server.ts            arranque: HTTP + WebSocket + MQTT + limpieza automática
 │   │   └── swagger.ts           documentación OpenAPI
+│   ├── Dockerfile               imagen de producción
 │   ├── Dockerfile.dev
 │   └── package.json
 ├── iot-gateway/                 simulador de dispositivos (demonio Node.js)
-│   └── src/index.ts
+│   ├── src/index.ts
+│   ├── Dockerfile               imagen de producción
+│   └── Dockerfile.dev
 ├── frontend/                    aplicación Angular (6 pantallas, tiempo real)
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── core/            servicios, interceptor JWT, guards, directiva hasRole, modelos
+│   │   │   ├── features/        login, dashboard, devices, device-detail, alerts, analytics
+│   │   │   ├── layout/          shell (toolbar, sidenav, tema claro/oscuro)
+│   │   │   └── shared/          componente de gráficas (Chart.js)
+│   │   └── environments/        configuración (URL del backend por entorno)
+│   ├── Dockerfile               build de Angular + nginx
+│   └── nginx.conf
 ├── infrastructure/              IaC con AWS CDK (DynamoDB, IoT Core, Lambda, API GW, S3+CloudFront)
 ├── mosquitto/
 │   └── mosquitto.conf           configuración del broker MQTT
