@@ -33,6 +33,7 @@ const r400 = { 400: { $ref: "#/components/responses/BadRequest" } };
 const r401 = { 401: { $ref: "#/components/responses/Unauthorized" } };
 const r403 = { 403: { $ref: "#/components/responses/Forbidden" } };
 const r404 = { 404: { $ref: "#/components/responses/NotFound" } };
+const r500 = { 500: { $ref: "#/components/responses/ServerError" } };
 
 const spec = swaggerJSDoc({
   definition: {
@@ -373,6 +374,7 @@ const spec = swaggerJSDoc({
         Unauthorized: jsonRef("Error", "Token faltante o inválido"),
         Forbidden: jsonRef("Error", "Sin permisos para esta acción"),
         NotFound: jsonRef("Error", "Recurso no encontrado"),
+        ServerError: jsonRef("Error", "Error interno del servidor"),
       },
     },
     security: bearer,
@@ -415,7 +417,7 @@ const spec = swaggerJSDoc({
           summary: "Rotar tokens",
           security: bearer,
           requestBody: jsonBody("RefreshRequest"),
-          responses: { 200: jsonRef("AuthTokens", "Nuevos tokens"), ...r400, ...r401 },
+          responses: { 200: jsonRef("AuthTokens", "Nuevos tokens"), ...r400, ...r401, ...r500 },
         },
       },
       "/api/v1/auth/logout": {
@@ -424,7 +426,7 @@ const spec = swaggerJSDoc({
           summary: "Cerrar sesión (revoca el refresh token)",
           security: bearer,
           requestBody: jsonBody("RefreshRequest"),
-          responses: { 204: { description: "Sesión cerrada" }, ...r400, ...r401 },
+          responses: { 204: { description: "Sesión cerrada" }, ...r400, ...r401, ...r500 },
         },
       },
       "/api/v1/auth/me": {
@@ -455,14 +457,14 @@ const spec = swaggerJSDoc({
             { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
             { name: "cursor", in: "query", schema: { type: "string" } },
           ],
-          responses: { 200: jsonRef("DevicesPage", "Página de dispositivos"), ...r401 },
+          responses: { 200: jsonRef("DevicesPage", "Página de dispositivos"), ...r401, ...r500 },
         },
         post: {
           tags: ["Dispositivos"],
           summary: "Crear dispositivo (admin, operator)",
           security: bearer,
           requestBody: jsonBody("DeviceInput"),
-          responses: { 201: jsonRef("Device", "Dispositivo creado"), ...r400, ...r401, ...r403 },
+          responses: { 201: jsonRef("Device", "Dispositivo creado"), ...r400, ...r401, ...r403, ...r500 },
         },
       },
       "/api/v1/devices/stats/summary": {
@@ -470,7 +472,7 @@ const spec = swaggerJSDoc({
           tags: ["Dispositivos"],
           summary: "Resumen por estado",
           security: bearer,
-          responses: { 200: jsonRef("DeviceStats", "Conteo por estado"), ...r401 },
+          responses: { 200: jsonRef("DeviceStats", "Conteo por estado"), ...r401, ...r500 },
         },
       },
       "/api/v1/devices/{id}": {
@@ -479,7 +481,7 @@ const spec = swaggerJSDoc({
           summary: "Obtener dispositivo",
           security: bearer,
           parameters: [idParam],
-          responses: { 200: jsonRef("Device", "Dispositivo"), ...r401, ...r404 },
+          responses: { 200: jsonRef("Device", "Dispositivo"), ...r401, ...r404, ...r500 },
         },
         put: {
           tags: ["Dispositivos"],
@@ -487,14 +489,14 @@ const spec = swaggerJSDoc({
           security: bearer,
           parameters: [idParam],
           requestBody: jsonBody("DeviceInput"),
-          responses: { 200: jsonRef("Device", "Dispositivo actualizado"), ...r400, ...r401, ...r403, ...r404 },
+          responses: { 200: jsonRef("Device", "Dispositivo actualizado"), ...r400, ...r401, ...r403, ...r404, ...r500 },
         },
         delete: {
           tags: ["Dispositivos"],
           summary: "Eliminar dispositivo (admin)",
           security: bearer,
           parameters: [idParam],
-          responses: { 204: { description: "Eliminado" }, ...r401, ...r403, ...r404 },
+          responses: { 204: { description: "Eliminado" }, ...r401, ...r403, ...r404, ...r500 },
         },
       },
       "/api/v1/devices/{id}/status": {
@@ -504,7 +506,7 @@ const spec = swaggerJSDoc({
           security: bearer,
           parameters: [idParam],
           requestBody: jsonBody("DeviceStatusInput"),
-          responses: { 200: jsonRef("Device", "Estado actualizado"), ...r400, ...r401, ...r403, ...r404 },
+          responses: { 200: jsonRef("Device", "Estado actualizado"), ...r400, ...r401, ...r403, ...r404, ...r500 },
         },
       },
       "/api/v1/devices/{id}/readings": {
@@ -513,7 +515,7 @@ const spec = swaggerJSDoc({
           summary: "Lecturas del dispositivo",
           security: bearer,
           parameters: [idParam, { name: "limit", in: "query", schema: { type: "integer", default: 50 } }],
-          responses: { 200: jsonRef("ReadingsPage", "Lecturas"), ...r401 },
+          responses: { 200: jsonRef("ReadingsPage", "Lecturas"), ...r401, ...r500 },
         },
       },
       "/api/v1/devices/{id}/alerts": {
@@ -522,7 +524,7 @@ const spec = swaggerJSDoc({
           summary: "Alertas del dispositivo",
           security: bearer,
           parameters: [idParam],
-          responses: { 200: jsonRef("AlertsPage", "Alertas"), ...r401 },
+          responses: { 200: jsonRef("AlertsPage", "Alertas"), ...r401, ...r500 },
         },
       },
 
@@ -535,7 +537,7 @@ const spec = swaggerJSDoc({
             { name: "limit", in: "query", schema: { type: "integer", default: 100 } },
             { name: "cursor", in: "query", schema: { type: "string" } },
           ],
-          responses: { 200: jsonRef("ReadingsPage", "Página de lecturas"), ...r401 },
+          responses: { 200: jsonRef("ReadingsPage", "Página de lecturas"), ...r401, ...r500 },
         },
       },
       "/api/v1/readings/batch": {
@@ -556,7 +558,7 @@ const spec = swaggerJSDoc({
           summary: "Agregados (total, promedio, min, max)",
           security: bearer,
           parameters: [{ name: "deviceId", in: "query", schema: { type: "string" } }],
-          responses: { 200: jsonRef("ReadingsAnalytics", "Analíticas"), ...r401 },
+          responses: { 200: jsonRef("ReadingsAnalytics", "Analíticas"), ...r401, ...r500 },
         },
       },
 
@@ -569,7 +571,7 @@ const spec = swaggerJSDoc({
             { name: "limit", in: "query", schema: { type: "integer", default: 100 } },
             { name: "cursor", in: "query", schema: { type: "string" } },
           ],
-          responses: { 200: jsonRef("AlertsPage", "Página de alertas"), ...r401 },
+          responses: { 200: jsonRef("AlertsPage", "Página de alertas"), ...r401, ...r500 },
         },
       },
       "/api/v1/alerts/{id}/acknowledge": {
@@ -578,7 +580,7 @@ const spec = swaggerJSDoc({
           summary: "Reconocer alerta (admin, operator)",
           security: bearer,
           parameters: [idParam],
-          responses: { 200: jsonRef("Alert", "Alerta reconocida"), ...r401, ...r403, ...r404 },
+          responses: { 200: jsonRef("Alert", "Alerta reconocida"), ...r401, ...r403, ...r404, ...r500 },
         },
       },
       "/api/v1/alerts/{id}/resolve": {
@@ -587,7 +589,7 @@ const spec = swaggerJSDoc({
           summary: "Resolver alerta (admin, operator)",
           security: bearer,
           parameters: [idParam],
-          responses: { 200: jsonRef("Alert", "Alerta resuelta"), ...r401, ...r403, ...r404 },
+          responses: { 200: jsonRef("Alert", "Alerta resuelta"), ...r401, ...r403, ...r404, ...r500 },
         },
       },
 
@@ -596,7 +598,7 @@ const spec = swaggerJSDoc({
           tags: ["Dashboard"],
           summary: "KPIs generales (cache 10s)",
           security: bearer,
-          responses: { 200: jsonRef("DashboardOverview", "Resumen"), ...r401 },
+          responses: { 200: jsonRef("DashboardOverview", "Resumen"), ...r401, ...r500 },
         },
       },
       "/api/v1/dashboard/rack/{rackId}": {
@@ -605,7 +607,7 @@ const spec = swaggerJSDoc({
           summary: "Resumen de un rack",
           security: bearer,
           parameters: [{ name: "rackId", in: "path", required: true, schema: { type: "string" } }],
-          responses: { 200: jsonRef("RackOverview", "Datos del rack"), ...r401 },
+          responses: { 200: jsonRef("RackOverview", "Datos del rack"), ...r401, ...r500 },
         },
       },
       "/api/v1/dashboard/trends": {
@@ -614,7 +616,7 @@ const spec = swaggerJSDoc({
           summary: "Tendencias por periodo",
           security: bearer,
           parameters: [{ name: "hours", in: "query", schema: { type: "integer", default: 24 } }],
-          responses: { 200: jsonRef("Trends", "Tendencias"), ...r401 },
+          responses: { 200: jsonRef("Trends", "Tendencias"), ...r401, ...r500 },
         },
       },
     },
