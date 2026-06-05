@@ -47,11 +47,17 @@ import { DEVICE_STATUSES, DEVICE_TYPES, Device, DeviceInput, DeviceStatus, Devic
         </mat-form-field>
         <mat-form-field appearance="outline">
           <mat-label>Posición</mat-label>
-          <input matInput type="number" formControlName="position" />
+          <input matInput type="number" min="1" formControlName="position" />
+          @if (form.controls.position.touched && form.controls.position.invalid) {
+            <mat-error>Debe ser 1 o mayor</mat-error>
+          }
         </mat-form-field>
         <mat-form-field appearance="outline">
           <mat-label>Piso</mat-label>
-          <input matInput type="number" formControlName="floor" />
+          <input matInput type="number" min="1" formControlName="floor" />
+          @if (form.controls.floor.touched && form.controls.floor.invalid) {
+            <mat-error>Debe ser 1 o mayor</mat-error>
+          }
         </mat-form-field>
 
         <mat-form-field appearance="outline">
@@ -130,8 +136,8 @@ export class DeviceForm {
     type: ['temperature', Validators.required],
     status: ['online', Validators.required],
     rack: ['A1', Validators.required],
-    position: [1, Validators.required],
-    floor: [1, Validators.required],
+    position: [1, [Validators.required, Validators.min(1)]],
+    floor: [1, [Validators.required, Validators.min(1)]],
     min: [18, Validators.required],
     max: [30, Validators.required],
     criticalMin: [15, Validators.required],

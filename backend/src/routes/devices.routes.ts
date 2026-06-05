@@ -17,8 +17,8 @@ import { emitEvent } from "../services/socket.service.js";
 
 const locationSchema = Joi.object({
   rack: Joi.string().required(),
-  position: Joi.number().integer().required(),
-  floor: Joi.number().integer().required(),
+  position: Joi.number().integer().min(1).required(),
+  floor: Joi.number().integer().min(1).required(),
 });
 
 const thresholdsSchema = Joi.object({
