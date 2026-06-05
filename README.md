@@ -10,6 +10,19 @@ edición) y manejar usuarios con tres roles: admin, operator y viewer.
 Desarrollado como prueba técnica para Grupo Salinas DC.
 
 
+## Demo en vivo
+
+La plataforma está desplegada y accesible públicamente:
+
+- **Frontend:** https://salinas-iot-frontend.ylbuuv.easypanel.host
+- **API / Swagger:** https://salinas-iot-backend.ylbuuv.easypanel.host/docs
+
+Usuario de prueba: `admin@salinas.local` / `Admin1234!`
+
+Está corriendo en un servidor con EasyPanel (Docker), con los servicios separados: frontend (nginx),
+backend, broker MQTT (Mosquitto) y DynamoDB Local.
+
+
 ## Cómo está construido
 
 El camino que siguen los datos es este:
