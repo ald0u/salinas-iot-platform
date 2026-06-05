@@ -28,4 +28,5 @@ export const env = {
   mqttEnabled: (process.env.MQTT_ENABLED || "false") === "true",
   mqttBrokerUrl: process.env.MQTT_BROKER_URL || "mqtt://localhost:1883",
   mqttTopicPrefix: process.env.MQTT_TOPIC_PREFIX || "dt/devices",
+  readingsRetentionHours: toNumber(process.env.READINGS_RETENTION_HOURS, 24),
 };

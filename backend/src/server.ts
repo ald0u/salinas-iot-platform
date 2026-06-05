@@ -4,6 +4,7 @@ import { env } from "./config/env.js";
 import { logger } from "./utils/logger.js";
 import { initSocket } from "./services/socket.service.js";
 import { initMqttSubscriber } from "./services/mqtt.service.js";
+import { pruneOldReadings } from "./services/maintenance.service.js";
 import { initializeTable } from "./db/dynamodb.js";
 
 async function bootstrap(): Promise<void> {
@@ -20,6 +21,9 @@ async function bootstrap(): Promise<void> {
       docs: `http://localhost:${env.port}/docs`,
     });
   });
+
+  setTimeout(() => void pruneOldReadings(), 60_000);
+  setInterval(() => void pruneOldReadings(), 30 * 60 * 1000);
 }
 
 bootstrap().catch((error) => {
