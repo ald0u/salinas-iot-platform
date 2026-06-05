@@ -1,5 +1,6 @@
 import {
   AfterViewInit,
+  ChangeDetectionStrategy,
   Component,
   ElementRef,
   OnDestroy,
@@ -14,6 +15,7 @@ Chart.register(...registerables);
 @Component({
   selector: 'app-chart',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `<canvas #canvas></canvas>`,
   styles: [
     `
