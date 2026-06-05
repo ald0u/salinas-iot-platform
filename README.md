@@ -289,4 +289,7 @@ CloudFormation sin necesidad de una cuenta de AWS.
 
 ## Video
 
-Enlace al video explicativo: _(pendiente)_
+Video explicativo de la solución (arquitectura, gateway, backend, frontend, infraestructura y demo
+end-to-end):
+
+**https://drive.google.com/file/d/1lMmQkZklHOsZXGJalWDa6PP-QSHqvjtQ/view?usp=drive_link**
