@@ -1,7 +1,4 @@
-export interface CursorPayload {
-  PK: string;
-  SK: string;
-}
+export type CursorPayload = Record<string, unknown>;
 
 export function encodeCursor(payload: CursorPayload): string {
   return Buffer.from(JSON.stringify(payload), "utf-8").toString("base64");

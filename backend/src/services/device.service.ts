@@ -1,4 +1,4 @@
-import { DeleteCommand, GetCommand, PutCommand, QueryCommand, ScanCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { randomUUID } from "node:crypto";
 import { env } from "../config/env.js";
 import { ddbDocClient } from "../db/dynamodb.js";
@@ -23,6 +23,7 @@ export async function createDevice(input: DeviceInput): Promise<Device> {
     PK: `DEVICE#${deviceId}`,
     SK: "METADATA",
     entity: "DEVICE",
+    listType: "DEVICE",
     deviceId,
     ...input,
     createdAt: now,
@@ -56,30 +57,20 @@ export async function getDevice(deviceId: string): Promise<Device> {
 }
 
 export async function listDevices(limit = 20, cursor?: string): Promise<{ items: Device[]; nextCursor?: string }> {
-  let startKey = decodeCursor(cursor) as Record<string, unknown> | undefined;
-  const items: Device[] = [];
-  let lastEvaluatedKey: Record<string, unknown> | undefined;
+  const result = await ddbDocClient.send(
+    new QueryCommand({
+      TableName: env.dynamodbTable,
+      IndexName: "ListIndex",
+      KeyConditionExpression: "listType = :lt",
+      ExpressionAttributeValues: { ":lt": "DEVICE" },
+      Limit: limit,
+      ExclusiveStartKey: decodeCursor(cursor),
+    }),
+  );
 
-  do {
-    const result = await ddbDocClient.send(
-      new ScanCommand({
-        TableName: env.dynamodbTable,
-        FilterExpression: "entity = :entity and SK = :sk",
-        ExpressionAttributeValues: {
-          ":entity": "DEVICE",
-          ":sk": "METADATA",
-        },
-        ExclusiveStartKey: startKey,
-      }),
-    );
-
-    items.push(...((result.Items || []) as Device[]));
-    lastEvaluatedKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
-    startKey = lastEvaluatedKey;
-  } while (lastEvaluatedKey && items.length < limit);
-
-  const nextCursor = lastEvaluatedKey
-    ? encodeCursor({ PK: String(lastEvaluatedKey.PK), SK: String(lastEvaluatedKey.SK) })
+  const items = (result.Items || []) as Device[];
+  const nextCursor = result.LastEvaluatedKey
+    ? encodeCursor(result.LastEvaluatedKey as Record<string, unknown>)
     : undefined;
 
   return { items, nextCursor };

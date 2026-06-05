@@ -46,6 +46,7 @@ export async function initializeTable(): Promise<void> {
           { AttributeName: "PK", AttributeType: "S" },
           { AttributeName: "SK", AttributeType: "S" },
           { AttributeName: "GSI1PK", AttributeType: "S" },
+          { AttributeName: "listType", AttributeType: "S" },
         ],
         KeySchema: [
           { AttributeName: "PK", KeyType: "HASH" },
@@ -58,6 +59,11 @@ export async function initializeTable(): Promise<void> {
               { AttributeName: "GSI1PK", KeyType: "HASH" },
               { AttributeName: "SK", KeyType: "RANGE" },
             ],
+            Projection: { ProjectionType: "ALL" },
+          },
+          {
+            IndexName: "ListIndex",
+            KeySchema: [{ AttributeName: "listType", KeyType: "HASH" }],
             Projection: { ProjectionType: "ALL" },
           },
         ],

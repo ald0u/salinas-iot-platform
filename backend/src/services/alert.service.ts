@@ -1,4 +1,4 @@
-import { GetCommand, PutCommand, QueryCommand, ScanCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { randomUUID } from "node:crypto";
 import { env } from "../config/env.js";
 import { ddbDocClient } from "../db/dynamodb.js";
@@ -19,6 +19,7 @@ export async function createAlert(input: {
     PK: `ALERT#${alertId}`,
     SK: "METADATA",
     entity: "ALERT",
+    listType: "ALERT",
     alertId,
     deviceId: input.deviceId,
     GSI1PK: `DEVICE#${input.deviceId}`,
@@ -42,27 +43,22 @@ export async function createAlert(input: {
 }
 
 export async function listAlerts(limit = 100, cursor?: string): Promise<{ items: Alert[]; nextCursor?: string }> {
-  let startKey = decodeCursor(cursor) as Record<string, unknown> | undefined;
-  const items: Alert[] = [];
-  let lastEvaluatedKey: Record<string, unknown> | undefined;
+  // Query directa al índice ListIndex (listType = ALERT): eficiente sin importar
+  // cuántas lecturas tenga la tabla.
+  const result = await ddbDocClient.send(
+    new QueryCommand({
+      TableName: env.dynamodbTable,
+      IndexName: "ListIndex",
+      KeyConditionExpression: "listType = :lt",
+      ExpressionAttributeValues: { ":lt": "ALERT" },
+      Limit: limit,
+      ExclusiveStartKey: decodeCursor(cursor),
+    }),
+  );
 
-  do {
-    const result = await ddbDocClient.send(
-      new ScanCommand({
-        TableName: env.dynamodbTable,
-        FilterExpression: "entity = :entity",
-        ExpressionAttributeValues: { ":entity": "ALERT" },
-        ExclusiveStartKey: startKey,
-      }),
-    );
-
-    items.push(...((result.Items || []) as Alert[]));
-    lastEvaluatedKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
-    startKey = lastEvaluatedKey;
-  } while (lastEvaluatedKey && items.length < limit);
-
-  const nextCursor = lastEvaluatedKey
-    ? encodeCursor({ PK: String(lastEvaluatedKey.PK), SK: String(lastEvaluatedKey.SK) })
+  const items = (result.Items || []) as Alert[];
+  const nextCursor = result.LastEvaluatedKey
+    ? encodeCursor(result.LastEvaluatedKey as Record<string, unknown>)
     : undefined;
 
   return { items, nextCursor };

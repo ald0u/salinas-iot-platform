@@ -9,6 +9,7 @@ export interface Device {
   PK: string;
   SK: "METADATA";
   entity: "DEVICE";
+  listType?: string;
   deviceId: string;
   name: string;
   type: DeviceType;
@@ -36,6 +37,7 @@ export interface Alert {
   PK: string;
   SK: "METADATA";
   entity: "ALERT";
+  listType?: string;
   alertId: string;
   deviceId: string;
   GSI1PK: string;
