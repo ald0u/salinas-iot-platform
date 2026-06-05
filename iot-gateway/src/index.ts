@@ -130,6 +130,78 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+type BackendDevice = {
+  deviceId: string;
+  name: string;
+  type: DeviceType;
+  location?: { rack: string; position: number; floor: number };
+  thresholds: { min: number; max: number; criticalMin: number; criticalMax: number };
+};
+
+let authToken: string | null = null;
+
+async function getToken(): Promise<string> {
+  if (authToken) {
+    return authToken;
+  }
+  const res = await axios.post(
+    `${backendUrl}/api/v1/auth/login`,
+    { email: adminEmail, password: adminPassword },
+    { timeout: 10000 },
+  );
+  authToken = res.data.tokens.accessToken as string;
+  return authToken;
+}
+
+function adoptDevice(d: BackendDevice): SimulatedDevice {
+  const config = typeConfigs[d.type] ?? typeConfigs.temperature;
+  const min = d.thresholds?.min ?? config.min;
+  const max = d.thresholds?.max ?? config.max;
+  return {
+    deviceId: d.deviceId,
+    name: d.name,
+    rack: d.location?.rack ?? "A1",
+    position: d.location?.position ?? 1,
+    floor: d.location?.floor ?? 1,
+    type: d.type,
+    unit: config.unit,
+    baseValue: (min + max) / 2,
+    min,
+    max,
+    criticalMin: d.thresholds?.criticalMin ?? config.criticalMin,
+    criticalMax: d.thresholds?.criticalMax ?? config.criticalMax,
+    status: "online",
+    nextPublishAt: Date.now() + randomIntervalMs(),
+  };
+}
+
+async function pollNewDevices(devices: SimulatedDevice[], knownIds: Set<string>): Promise<void> {
+  try {
+    const token = await getToken();
+    const res = await axios.get(`${backendUrl}/api/v1/devices?limit=500`, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 10000,
+    });
+    const remote = (res.data.items ?? []) as BackendDevice[];
+    let added = 0;
+    for (const d of remote) {
+      if (d.deviceId && !knownIds.has(d.deviceId)) {
+        knownIds.add(d.deviceId);
+        devices.push(adoptDevice(d));
+        added += 1;
+      }
+    }
+    if (added > 0) {
+      logState(`Adoptados ${added} dispositivo(s) nuevo(s) para simulación`);
+    }
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      authToken = null;
+    }
+    logState("Error consultando dispositivos nuevos", error instanceof Error ? error.message : String(error));
+  }
+}
+
 /**
  * Registra los dispositivos simulados en el backend (control plane vía HTTP).
  * Usa el deviceId asignado por el backend para que las lecturas publicadas por
@@ -140,12 +212,7 @@ async function registerDevices(devices: SimulatedDevice[]): Promise<void> {
 
   for (let attempt = 1; attempt <= 10; attempt += 1) {
     try {
-      const res = await axios.post(
-        `${backendUrl}/api/v1/auth/login`,
-        { email: adminEmail, password: adminPassword },
-        { timeout: 10000 },
-      );
-      token = res.data.tokens.accessToken;
+      token = await getToken();
       break;
     } catch {
       logState(`Login al backend falló (intento ${attempt}/10), reintentando...`);
@@ -358,10 +425,17 @@ async function main(): Promise<void> {
   }
 
   await registerDevices(devices);
+
+  const knownIds = new Set<string>(devices.map((d) => d.deviceId));
+
   await tick(devices);
   setInterval(() => {
     void tick(devices);
   }, publishIntervalMs);
+
+  setInterval(() => {
+    void pollNewDevices(devices, knownIds);
+  }, 15000);
 }
 
 void main().catch((error) => {
