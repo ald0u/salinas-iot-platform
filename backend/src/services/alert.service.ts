@@ -42,21 +42,27 @@ export async function createAlert(input: {
 }
 
 export async function listAlerts(limit = 100, cursor?: string): Promise<{ items: Alert[]; nextCursor?: string }> {
-  const startKey = decodeCursor(cursor);
+  let startKey = decodeCursor(cursor) as Record<string, unknown> | undefined;
+  const items: Alert[] = [];
+  let lastEvaluatedKey: Record<string, unknown> | undefined;
 
-  const result = await ddbDocClient.send(
-    new ScanCommand({
-      TableName: env.dynamodbTable,
-      FilterExpression: "entity = :entity",
-      ExpressionAttributeValues: { ":entity": "ALERT" },
-      Limit: limit,
-      ExclusiveStartKey: startKey,
-    }),
-  );
+  do {
+    const result = await ddbDocClient.send(
+      new ScanCommand({
+        TableName: env.dynamodbTable,
+        FilterExpression: "entity = :entity",
+        ExpressionAttributeValues: { ":entity": "ALERT" },
+        ExclusiveStartKey: startKey,
+      }),
+    );
 
-  const items = (result.Items || []) as Alert[];
-  const nextCursor = result.LastEvaluatedKey
-    ? encodeCursor({ PK: String(result.LastEvaluatedKey.PK), SK: String(result.LastEvaluatedKey.SK) })
+    items.push(...((result.Items || []) as Alert[]));
+    lastEvaluatedKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+    startKey = lastEvaluatedKey;
+  } while (lastEvaluatedKey && items.length < limit);
+
+  const nextCursor = lastEvaluatedKey
+    ? encodeCursor({ PK: String(lastEvaluatedKey.PK), SK: String(lastEvaluatedKey.SK) })
     : undefined;
 
   return { items, nextCursor };
