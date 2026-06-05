@@ -29,7 +29,7 @@ Backend (Express + Socket.io)
         │
         ├──────────────► DynamoDB (single-table)
         │
-        └──────────────► Frontend Angular (en desarrollo)
+        └──────────────► Frontend Angular (dashboards en tiempo real)
 ```
 
 En resumen, cada pieza hace lo siguiente:
@@ -40,7 +40,10 @@ En resumen, cada pieza hace lo siguiente:
 - **Backend**: recibe cada lectura, la persiste, evalúa los umbrales, genera alertas y emite eventos
   en tiempo real. Expone además la API REST y la autenticación.
 - **DynamoDB**: la base de datos. En local se usa DynamoDB Local.
-- **Frontend**: la aplicación de Angular que consume la API y el WebSocket (todavía en construcción).
+- **Frontend**: una aplicación de Angular con seis pantallas (login, dashboard, dispositivos, detalle,
+  alertas y analytics). Consume la API REST y se suscribe al WebSocket, así que las gráficas y las
+  alertas se actualizan solas. Usa Angular Material, gráficas con Chart.js, tema claro/oscuro y carga
+  perezosa de cada módulo.
 
 
 ## Una nota sobre AWS
@@ -109,6 +112,20 @@ cd iot-gateway
 npm install
 npm run dev
 ```
+
+### El frontend
+
+El frontend corre aparte (no va dentro del docker-compose). Con el backend ya arriba:
+
+```bash
+cd frontend
+npm install
+npm start
+```
+
+Queda en `http://localhost:4200`. Entra con el usuario de abajo y verás el dashboard con los datos
+del simulador actualizándose en vivo. El frontend apunta al backend en `http://localhost:3000`
+(configurable en `src/environments/environment.ts`).
 
 
 ## Usuario inicial
@@ -237,8 +254,8 @@ salinas-iot-platform/
 │   └── package.json
 ├── iot-gateway/                 simulador de dispositivos (demonio Node.js)
 │   └── src/index.ts
-├── frontend/                    aplicación Angular (en construcción)
-├── infrastructure/              IaC con AWS CDK (en progreso)
+├── frontend/                    aplicación Angular (6 pantallas, tiempo real)
+├── infrastructure/              IaC con AWS CDK (DynamoDB, IoT Core, Lambda, API GW, S3+CloudFront)
 ├── mosquitto/
 │   └── mosquitto.conf           configuración del broker MQTT
 ├── docs/
@@ -252,8 +269,9 @@ salinas-iot-platform/
 
 El diseño en la nube sería: el gateway en EC2 o ECS publicando por MQTT a AWS IoT Core; una IoT Rule
 que dispara una Lambda (o reenvía por HTTP) con la lógica de ingesta del backend; DynamoDB con TTL;
-API Gateway al frente; y el frontend en S3 + CloudFront. El directorio `infrastructure/` está pensado
-para describir esos recursos con AWS CDK.
+API Gateway al frente; y el frontend en S3 + CloudFront. Esos recursos están descritos como código en
+el directorio [`infrastructure/`](infrastructure/) con AWS CDK; `npm run synth` genera la plantilla de
+CloudFormation sin necesidad de una cuenta de AWS.
 
 
 ## Video
