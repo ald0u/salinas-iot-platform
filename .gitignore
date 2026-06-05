@@ -58,7 +58,3 @@ desktop.ini
 .cache/
 .temp/
 tmp/
-
-# ---------- Archivos de trabajo (no se entregan) ----------
-.claude/
-docs/video-guion.md
