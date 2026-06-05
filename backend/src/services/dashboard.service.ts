@@ -1,5 +1,7 @@
 import NodeCache from "node-cache";
+import { QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { env } from "../config/env.js";
+import { ddbDocClient } from "../db/dynamodb.js";
 import { listDevices } from "./device.service.js";
 import { listAlerts } from "./alert.service.js";
 import { listReadings } from "./reading.service.js";
@@ -54,24 +56,44 @@ export async function getRackOverview(rackId: string): Promise<Record<string, un
 }
 
 export async function getTrends(hours = 24): Promise<Record<string, unknown>> {
-  const readings = await listReadings(1000);
-  const from = Date.now() - hours * 60 * 60 * 1000;
+  const fromIso = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+  const devices = (await listDevices(500)).items;
 
-  const filtered = readings.items.filter((r) => new Date(r.timestamp).getTime() >= from);
+  const byDevice: Record<string, { count: number; avg: number; sum: number }> = {};
+  let points = 0;
 
-  const byDevice = filtered.reduce<Record<string, { count: number; avg: number; sum: number }>>((acc, item) => {
-    if (!acc[item.deviceId]) {
-      acc[item.deviceId] = { count: 0, avg: 0, sum: 0 };
+  // Por cada dispositivo, consulta SOLO sus lecturas dentro del rango de tiempo.
+  // El SK es READING#<timestamp>#<uuid>, así que el filtro por tiempo es exacto.
+  for (const device of devices) {
+    let startKey: Record<string, unknown> | undefined;
+    let count = 0;
+    let sum = 0;
+
+    do {
+      const result = await ddbDocClient.send(
+        new QueryCommand({
+          TableName: env.dynamodbTable,
+          KeyConditionExpression: "PK = :pk AND SK >= :from",
+          ExpressionAttributeValues: {
+            ":pk": `DEVICE#${device.deviceId}`,
+            ":from": `READING#${fromIso}`,
+          },
+          ExclusiveStartKey: startKey,
+        }),
+      );
+
+      for (const item of (result.Items || []) as Array<{ value: number }>) {
+        count += 1;
+        sum += item.value;
+      }
+      startKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (startKey);
+
+    if (count > 0) {
+      byDevice[device.deviceId] = { count, sum, avg: sum / count };
+      points += count;
     }
-    acc[item.deviceId].count += 1;
-    acc[item.deviceId].sum += item.value;
-    acc[item.deviceId].avg = acc[item.deviceId].sum / acc[item.deviceId].count;
-    return acc;
-  }, {});
+  }
 
-  return {
-    hours,
-    points: filtered.length,
-    byDevice,
-  };
+  return { hours, points, byDevice };
 }
